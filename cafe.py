@@ -89,6 +89,99 @@ HTML = """<!DOCTYPE html>
     color: var(--accent-2);
   }
 
+  .tables-section {
+    background: var(--card);
+    border: 1px solid #e8dece;
+    border-radius: 16px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+
+  .tables-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.45rem;
+  }
+
+  .tables-head h3 {
+    font-family: "Lateef", serif;
+    font-size: 1.65rem;
+    color: var(--accent-2);
+    margin: 0;
+  }
+
+  .table-badge {
+    background: linear-gradient(135deg, var(--accent-2), #3d7a44);
+    color: #fff;
+    padding: 0.35rem 0.9rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.88rem;
+    white-space: nowrap;
+  }
+
+  .table-badge.empty {
+    background: #ece6dd;
+    color: #5c4a36;
+  }
+
+  .tables-hint {
+    font-size: 0.86rem;
+    color: var(--muted);
+    margin-bottom: 0.85rem;
+    line-height: 1.55;
+  }
+
+  .tables-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    max-height: 160px;
+    overflow-y: auto;
+    padding-bottom: 2px;
+  }
+
+  .table-num-btn {
+    min-width: 2.75rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 10px;
+    border: 2px solid #d8ccb9;
+    background: #fffdfa;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  }
+
+  .table-num-btn:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .table-num-btn.selected {
+    border-color: var(--accent-2);
+    background: #edf6ee;
+    color: var(--accent-2);
+    box-shadow: 0 4px 12px rgba(47, 93, 52, 0.18);
+  }
+
+  .admin-tables-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eadfcd;
+  }
+
+  .admin-tables-row .field { flex: 1; min-width: 140px; max-width: 220px; margin: 0; }
+
   .btn {
     border: none;
     border-radius: 12px;
@@ -265,10 +358,27 @@ HTML = """<!DOCTYPE html>
       <button class="btn btn-primary" id="toggleAdminBtn">فتح لوحة الأدمن</button>
     </div>
 
+    <section class="tables-section" aria-label="اختيار رقم الطاولة">
+      <div class="tables-head">
+        <h3>🪑 نظام الطاولات</h3>
+        <span id="currentTableBadge" class="table-badge empty">لم تُحدَّد الطاولة</span>
+      </div>
+      <p class="tables-hint">اختر الرقم المكتوب على طاولتك ليسهّل على الموظف توصيل الطلب إليك.</p>
+      <div class="tables-grid" id="tablePicker" role="group" aria-label="أرقام الطاولات"></div>
+    </section>
+
     <section id="adminPanel" class="admin-panel">
       <div class="panel-header">
         <h3>لوحة الأدمن</h3>
         <button class="btn btn-muted" id="seedBtn">إعادة المنتجات الافتراضية</button>
+      </div>
+
+      <div class="admin-tables-row">
+        <div class="field">
+          <label for="tableCountInput">عدد الطاولات في المحل</label>
+          <input id="tableCountInput" type="number" min="1" max="99" value="20" step="1">
+        </div>
+        <button type="button" class="btn btn-primary" id="saveTableCountBtn">حفظ عدد الطاولات</button>
       </div>
 
       <form id="productForm">
@@ -333,6 +443,10 @@ HTML = """<!DOCTYPE html>
 
 <script>
   const STORAGE_KEY = "cafe-products-v1";
+  const STORAGE_TABLE_COUNT_KEY = "cafe-table-count-v1";
+  const STORAGE_CURRENT_TABLE_KEY = "cafe-current-table-v1";
+  const DEFAULT_TABLE_COUNT = 20;
+
   const defaultProducts = [
     { id: 1, name: "قهوة النخيل الخاصة", price: 2500, category: "مشروبات", emoji: "☕", description: "خلطة بن عربي مع الهيل." },
     { id: 2, name: "لاتيه التمر", price: 3000, category: "مشروبات", emoji: "🧋", description: "لاتيه كريمي بلمسة تمر بصري." },
@@ -349,6 +463,92 @@ HTML = """<!DOCTYPE html>
   const adminTableBody = document.getElementById("adminTableBody");
   const status = document.getElementById("status");
   const imageFileInput = document.getElementById("imageFile");
+  const tablePicker = document.getElementById("tablePicker");
+  const currentTableBadge = document.getElementById("currentTableBadge");
+  const tableCountInput = document.getElementById("tableCountInput");
+  const saveTableCountBtn = document.getElementById("saveTableCountBtn");
+
+  function readTableCount() {
+    const raw = localStorage.getItem(STORAGE_TABLE_COUNT_KEY);
+    const n = raw == null ? DEFAULT_TABLE_COUNT : parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 1) return DEFAULT_TABLE_COUNT;
+    return Math.min(99, Math.max(1, n));
+  }
+
+  function writeTableCount(n) {
+    localStorage.setItem(STORAGE_TABLE_COUNT_KEY, String(n));
+  }
+
+  function readCurrentTable() {
+    const raw = localStorage.getItem(STORAGE_CURRENT_TABLE_KEY);
+    if (raw == null || raw === "") return null;
+    const num = parseInt(raw, 10);
+    if (!Number.isFinite(num)) return null;
+    const max = readTableCount();
+    if (num < 1 || num > max) return null;
+    return num;
+  }
+
+  function writeCurrentTable(num) {
+    if (num == null) {
+      localStorage.removeItem(STORAGE_CURRENT_TABLE_KEY);
+      return;
+    }
+    localStorage.setItem(STORAGE_CURRENT_TABLE_KEY, String(num));
+  }
+
+  function updateTableBadge() {
+    const t = readCurrentTable();
+    if (t == null) {
+      currentTableBadge.textContent = "لم تُحدَّد الطاولة";
+      currentTableBadge.classList.add("empty");
+      return;
+    }
+    currentTableBadge.textContent = "طاولة " + t;
+    currentTableBadge.classList.remove("empty");
+  }
+
+  function renderTablePicker() {
+    const count = readTableCount();
+    const selected = readCurrentTable();
+    tablePicker.innerHTML = "";
+    for (let i = 1; i <= count; i++) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "table-num-btn" + (selected === i ? " selected" : "");
+      btn.textContent = String(i);
+      btn.setAttribute("aria-pressed", selected === i ? "true" : "false");
+      btn.dataset.tableNum = String(i);
+      tablePicker.appendChild(btn);
+    }
+    tableCountInput.value = String(count);
+    updateTableBadge();
+  }
+
+  tablePicker.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) return;
+    const num = parseInt(target.dataset.tableNum || "", 10);
+    if (!Number.isFinite(num)) return;
+    const prev = readCurrentTable();
+    if (prev === num) {
+      writeCurrentTable(null);
+    } else {
+      writeCurrentTable(num);
+    }
+    renderTablePicker();
+  });
+
+  saveTableCountBtn.addEventListener("click", () => {
+    let n = parseInt(tableCountInput.value, 10);
+    if (!Number.isFinite(n)) n = DEFAULT_TABLE_COUNT;
+    n = Math.min(99, Math.max(1, n));
+    writeTableCount(n);
+    const cur = readCurrentTable();
+    if (cur != null && cur > n) writeCurrentTable(null);
+    renderTablePicker();
+    showStatus("تم حفظ عدد الطاولات: " + n + ".");
+  });
 
   function readProducts() {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -490,6 +690,7 @@ HTML = """<!DOCTYPE html>
     showStatus("تم حذف المنتج.");
   });
 
+  renderTablePicker();
   refreshAll();
 </script>
 </body>
