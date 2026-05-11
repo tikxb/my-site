@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}كوفي النخيل{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="{{ url_for('index') }}">
+        <span class="brand__icon" aria-hidden="true">🌴</span>
+        <span class="brand__text">كوفي النخيل</span>
+      </a>
+      <nav class="site-nav">
+        <a href="{{ url_for('index') }}">القائمة</a>
+        {% if session.get('admin') %}
+        <a href="{{ url_for('admin_dashboard') }}">لوحة المدير</a>
+        <a href="{{ url_for('admin_logout') }}">خروج</a>
+        {% else %}
+        <a href="{{ url_for('admin_login') }}">دخول المدير</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-list">
+          {% for category, message in messages %}
+            <p class="flash flash--{{ category }}">{{ message }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>كوفي النخيل — أهلاً وسهلاً</p>
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

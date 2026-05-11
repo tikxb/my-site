@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}تم الطلب — كوفي النخيل{% endblock %}
+
+{% block content %}
+<section class="success card">
+  <h1 class="success__title">تم استلام طلبك</h1>
+  <p class="success__text">رقم الطلب: <strong>{{ order_id }}</strong></p>
+  <p class="success__hint">سيتم تجهيز طلبك وتقديمه إلى طاولتك قريباً.</p>
+  <a class="btn btn--primary" href="{{ url_for('index') }}">العودة للقائمة</a>
+</section>
+{% endblock %}

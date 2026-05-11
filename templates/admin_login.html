@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}دخول المدير — كوفي النخيل{% endblock %}
+{% block body_class %}page-admin-login{% endblock %}
+
+{% block content %}
+<section class="admin-login card">
+  <h1 class="section-title">لوحة المدير</h1>
+  <p class="muted">أدخل كلمة المرور لمتابعة الطلبات وإدارة الصور.</p>
+  <form method="post" class="stack-form" action="{{ url_for('admin_login') }}">
+    {% if next_url %}
+    <input type="hidden" name="next" value="{{ next_url }}">
+    {% endif %}
+    <div class="form-row">
+      <label for="password">كلمة المرور</label>
+      <input type="password" id="password" name="password" required autocomplete="current-password">
+    </div>
+    <button type="submit" class="btn btn--primary btn--block">دخول</button>
+  </form>
+</section>
+{% endblock %}

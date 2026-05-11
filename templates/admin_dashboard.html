@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}لوحة المدير — كوفي النخيل{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+{% set status_ar = {
+  'pending': 'قيد الانتظار',
+  'preparing': 'قيد التحضير',
+  'ready': 'جاهز',
+  'done': 'مكتمل'
+} %}
+
+{% block content %}
+<h1 class="page-title">لوحة المدير</h1>
+
+<section class="admin-block card">
+  <h2 class="section-title">الطلبات</h2>
+  {% if not orders %}
+  <p class="muted">لا توجد طلبات بعد.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>الطاولة</th>
+          <th>الوقت</th>
+          <th>المحتوى</th>
+          <th>ملاحظة</th>
+          <th>الحالة</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in orders %}
+        <tr>
+          <td>{{ o.id }}</td>
+          <td>{{ o.table_number }}</td>
+          <td class="nowrap">{{ o.created_at }}</td>
+          <td>{{ o.summary }}</td>
+          <td>{{ o.note or '—' }}</td>
+          <td>
+            <span class="badge badge--{{ o.status }}">{{ status_ar.get(o.status, o.status) }}</span>
+            <form method="post" action="{{ url_for('admin_order_status', order_id=o.id) }}" class="inline-status">
+              <label class="sr-only" for="st-{{ o.id }}">تغيير الحالة</label>
+              <select name="status" id="st-{{ o.id }}" class="select-compact" onchange="this.form.submit()">
+                <option value="pending" {% if o.status == 'pending' %}selected{% endif %}>قيد الانتظار</option>
+                <option value="preparing" {% if o.status == 'preparing' %}selected{% endif %}>قيد التحضير</option>
+                <option value="ready" {% if o.status == 'ready' %}selected{% endif %}>جاهز</option>
+                <option value="done" {% if o.status == 'done' %}selected{% endif %}>مكتمل</option>
+              </select>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="admin-block card">
+  <h2 class="section-title">صور المشروبات</h2>
+  <p class="muted">ارفع صورة (png، jpg، webp) بحد أقصى 2 ميجابايت.</p>
+  <div class="admin-menu-grid">
+    {% for m in menu %}
+    <div class="admin-menu-item card">
+      <img src="{{ m.image_path }}" alt="" class="admin-menu-item__thumb" width="120" height="90" loading="lazy">
+      <div class="admin-menu-item__meta">
+        <strong>{{ m.name_ar }}</strong>
+        <span class="muted">{{ '%.2f'|format(m.price) }} ر.س</span>
+      </div>
+      <form method="post" action="{{ url_for('admin_menu_image', item_id=m.id) }}" enctype="multipart/form-data" class="upload-form">
+        <input type="file" name="image" accept=".png,.jpg,.jpeg,.webp" required>
+        <button type="submit" class="btn btn--secondary btn--small">تحديث الصورة</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}القائمة — كوفي النخيل{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1 class="hero__title">كوفي النخيل</h1>
+  <p class="hero__subtitle">مشروبات مختارة — اطلب من طاولتك بسهولة</p>
+</section>
+
+<section class="order-panel card" id="order-panel">
+  <h2 class="section-title">إرسال الطلب</h2>
+  <div class="form-row">
+    <label for="table_number">رقم الطاولة</label>
+    <input type="number" id="table_number" name="table_number" min="1" max="99" placeholder="مثال: 5" required>
+  </div>
+  <div class="form-row">
+    <label for="order_note">ملاحظة (اختياري)</label>
+    <textarea id="order_note" rows="2" maxlength="500" placeholder="تعليمات خاصة بالطلب"></textarea>
+  </div>
+  <div class="cart-summary" id="cart-summary">
+    <p class="cart-summary__empty" id="cart-empty">السلة فارغة — أضف مشروباً من القائمة</p>
+    <ul class="cart-list hidden" id="cart-list"></ul>
+    <p class="cart-total hidden" id="cart-total"></p>
+  </div>
+  <button type="button" class="btn btn--primary btn--block" id="submit-order" disabled>إرسال الطلب</button>
+  <p class="form-msg hidden" id="order-msg" role="status"></p>
+</section>
+
+<section class="menu-section">
+  <h2 class="section-title">قائمة المشروبات</h2>
+  <div class="menu-grid">
+    {% for item in items %}
+    <article class="menu-card card" data-id="{{ item.id }}" data-name="{{ item.name_ar }}" data-price="{{ item.price }}">
+      <div class="menu-card__image-wrap">
+        <img src="{{ item.image_path }}" alt="{{ item.name_ar }}" class="menu-card__image" loading="lazy" width="320" height="220">
+      </div>
+      <div class="menu-card__body">
+        <h3 class="menu-card__title">{{ item.name_ar }}</h3>
+        <p class="menu-card__price">{{ '%.2f'|format(item.price) }} <span class="currency">ر.س</span></p>
+        <div class="menu-card__actions">
+          <button type="button" class="btn btn--ghost qty-down" aria-label="تقليل">−</button>
+          <span class="qty" data-qty="0">0</span>
+          <button type="button" class="btn btn--ghost qty-up" aria-label="زيادة">+</button>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const cart = new Map();
+  const listEl = document.getElementById('cart-list');
+  const emptyEl = document.getElementById('cart-empty');
+  const totalEl = document.getElementById('cart-total');
+  const submitBtn = document.getElementById('submit-order');
+  const msgEl = document.getElementById('order-msg');
+  const tableInput = document.getElementById('table_number');
+  const noteInput = document.getElementById('order_note');
+
+  function syncCardQty(card, n) {
+    const span = card.querySelector('.qty');
+    span.textContent = String(n);
+    span.dataset.qty = String(n);
+  }
+
+  function renderCart() {
+    listEl.innerHTML = '';
+    let sum = 0;
+    let count = 0;
+    document.querySelectorAll('.menu-card').forEach(function (card) {
+      const id = parseInt(card.dataset.id, 10);
+      const n = cart.get(id) || 0;
+      syncCardQty(card, n);
+      const price = parseFloat(card.dataset.price) || 0;
+      const name = card.dataset.name;
+      if (n > 0) {
+        sum += price * n;
+        count += n;
+        const li = document.createElement('li');
+        li.textContent = name + ' × ' + n;
+        listEl.appendChild(li);
+      }
+    });
+    const hasItems = count > 0;
+    emptyEl.classList.toggle('hidden', hasItems);
+    listEl.classList.toggle('hidden', !hasItems);
+    totalEl.classList.toggle('hidden', !hasItems);
+    totalEl.textContent = hasItems ? 'المجموع التقريبي: ' + sum.toFixed(2) + ' ر.س' : '';
+    submitBtn.disabled = !hasItems;
+  }
+
+  document.querySelectorAll('.menu-card').forEach(function (card) {
+    const id = parseInt(card.dataset.id, 10);
+    card.querySelector('.qty-up').addEventListener('click', function () {
+      cart.set(id, (cart.get(id) || 0) + 1);
+      renderCart();
+    });
+    card.querySelector('.qty-down').addEventListener('click', function () {
+      const cur = cart.get(id) || 0;
+      if (cur <= 1) cart.delete(id);
+      else cart.set(id, cur - 1);
+      renderCart();
+    });
+  });
+
+  renderCart();
+
+  submitBtn.addEventListener('click', function () {
+    msgEl.classList.add('hidden');
+    const table = parseInt(tableInput.value, 10);
+    if (!table || table < 1 || table > 99) {
+      msgEl.textContent = 'أدخل رقم طاولة بين 1 و 99';
+      msgEl.classList.remove('hidden');
+      msgEl.classList.add('form-msg--err');
+      return;
+    }
+    const items = [];
+    cart.forEach(function (qty, menu_item_id) {
+      if (qty > 0) items.push({ menu_item_id: menu_item_id, quantity: qty });
+    });
+    if (!items.length) return;
+
+    submitBtn.disabled = true;
+    fetch('{{ url_for("place_order") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        table_number: table,
+        items: items,
+        note: (noteInput.value || '').trim()
+      })
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (_ref) {
+        const j = _ref.j;
+        if (j.ok) {
+          window.location.href = '/order/done/' + j.order_id;
+          return;
+        }
+        msgEl.textContent = j.error || 'حدث خطأ';
+        msgEl.classList.remove('hidden');
+        msgEl.classList.add('form-msg--err');
+        submitBtn.disabled = false;
+      })
+      .catch(function () {
+        msgEl.textContent = 'تعذر الاتصال بالخادم';
+        msgEl.classList.remove('hidden');
+        msgEl.classList.add('form-msg--err');
+        submitBtn.disabled = false;
+      });
+  });
+})();
+</script>
+{% endblock %}
