@@ -36,6 +36,34 @@ MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 TABLE_MIN, TABLE_MAX = 1, 99
 ORDER_STATUSES = ("pending", "preparing", "ready", "done")
 
+# مسارات مطلقة: تعمل على Linux/VPS وعند التشغيل بـ python app.py (__main__)
+_BASE_DIR = Path(__file__).resolve().parent
+
+_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS menu_item (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name_ar TEXT NOT NULL,
+    price REAL NOT NULL,
+    image_path TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS cafe_order (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_number INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    note TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS order_line (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL REFERENCES cafe_order(id) ON DELETE CASCADE,
+    menu_item_id INTEGER NOT NULL REFERENCES menu_item(id),
+    quantity INTEGER NOT NULL,
+    unit_price REAL NOT NULL,
+    UNIQUE(order_id, menu_item_id)
+);
+"""
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -43,7 +71,7 @@ def _utc_now_iso() -> str:
 
 def get_db() -> sqlite3.Connection:
     if "db" not in g:
-        path = Path(current_app.instance_path) / "cafe.db"
+        path = Path(current_app.instance_path).resolve() / "cafe.db"
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)
         conn.row_factory = sqlite3.Row
@@ -58,49 +86,56 @@ def close_db(_: Any = None) -> None:
         db.close()
 
 
-def init_db() -> None:
-    db = get_db()
-    db.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS menu_item (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name_ar TEXT NOT NULL,
-            price REAL NOT NULL,
-            image_path TEXT NOT NULL,
-            sort_order INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS cafe_order (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            table_number INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            note TEXT NOT NULL DEFAULT ''
-        );
-        CREATE TABLE IF NOT EXISTS order_line (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER NOT NULL REFERENCES cafe_order(id) ON DELETE CASCADE,
-            menu_item_id INTEGER NOT NULL REFERENCES menu_item(id),
-            quantity INTEGER NOT NULL,
-            unit_price REAL NOT NULL,
-            UNIQUE(order_id, menu_item_id)
-        );
-        """
+def _seed_menu_if_empty(conn: sqlite3.Connection) -> None:
+    cur = conn.execute("SELECT COUNT(*) AS c FROM menu_item")
+    if cur.fetchone()["c"] != 0:
+        return
+    defaults = [
+        ("قهوة عربية", 12.0, "/static/img/placeholder.svg", 1),
+        ("كابتشينو", 18.0, "/static/img/placeholder.svg", 2),
+        ("لاتيه", 20.0, "/static/img/placeholder.svg", 3),
+        ("شاي كرك", 14.0, "/static/img/placeholder.svg", 4),
+        ("عصير برتقال طازج", 16.0, "/static/img/placeholder.svg", 5),
+        ("موكا", 22.0, "/static/img/placeholder.svg", 6),
+    ]
+    conn.executemany(
+        "INSERT INTO menu_item (name_ar, price, image_path, sort_order) VALUES (?,?,?,?)",
+        defaults,
     )
-    cur = db.execute("SELECT COUNT(*) AS c FROM menu_item")
-    if cur.fetchone()["c"] == 0:
-        defaults = [
-            ("قهوة عربية", 12.0, "/static/img/placeholder.svg", 1),
-            ("كابتشينو", 18.0, "/static/img/placeholder.svg", 2),
-            ("لاتيه", 20.0, "/static/img/placeholder.svg", 3),
-            ("شاي كرك", 14.0, "/static/img/placeholder.svg", 4),
-            ("عصير برتقال طازج", 16.0, "/static/img/placeholder.svg", 5),
-            ("موكا", 22.0, "/static/img/placeholder.svg", 6),
-        ]
-        db.executemany(
-            "INSERT INTO menu_item (name_ar, price, image_path, sort_order) VALUES (?,?,?,?)",
-            defaults,
-        )
-    db.commit()
+
+
+def ensure_database(instance_path: Path | None = None) -> None:
+    """إنشاء ملف SQLite والجداول (بدون الاعتماد على g). مناسب لـ app_context عند الإقلاع."""
+    base = Path(instance_path if instance_path is not None else current_app.instance_path).resolve()
+    base.mkdir(parents=True, exist_ok=True)
+    db_path = base / "cafe.db"
+    conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.executescript(_SCHEMA_SQL)
+        _seed_menu_if_empty(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class _Db:
+    """مكافئ db.create_all() في SQLAlchemy — لإنشاء الجداول داخل app_context."""
+
+    @staticmethod
+    def create_all() -> None:
+        ensure_database()
+
+
+db = _Db()
+
+
+def init_db() -> None:
+    db_conn = get_db()
+    db_conn.executescript(_SCHEMA_SQL)
+    _seed_menu_if_empty(db_conn)
+    db_conn.commit()
 
 
 def admin_required(view):
@@ -116,9 +151,11 @@ def admin_required(view):
 def create_app() -> Flask:
     app = Flask(
         __name__,
+        root_path=str(_BASE_DIR),
         instance_relative_config=True,
-        template_folder="templates",
-        static_folder="static",
+        instance_path=str(_BASE_DIR / "instance"),
+        template_folder=str(_BASE_DIR / "templates"),
+        static_folder=str(_BASE_DIR / "static"),
     )
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or "dev-only-change-in-production"
     app.config["ADMIN_PASSWORD"] = os.environ.get("CAFE_ADMIN_PASSWORD") or "admin"
@@ -282,7 +319,7 @@ def create_app() -> Flask:
             flash("حجم الملف كبير جداً (الحد 2 ميجابايت)", "error")
             return redirect(url_for("admin_dashboard"))
 
-        uploads = Path(app.root_path) / "static" / "uploads"
+        uploads = _BASE_DIR / "static" / "uploads"
         uploads.mkdir(parents=True, exist_ok=True)
         fname = f"{item_id}_{uuid.uuid4().hex[:10]}.{ext}"
         safe = secure_filename(fname)
@@ -306,17 +343,10 @@ def create_app() -> Flask:
 
 app = create_app()
 
+with app.app_context():
+    db.create_all()
+
 if __name__ == "__main__":
-    import threading
-    import webbrowser
-
-    host, port = "127.0.0.1", 5000
-    url = f"http://{host}:{port}/"
-
-    def _open_browser() -> None:
-        webbrowser.open(url)
-
-    threading.Timer(0.8, _open_browser).start()
-    print(f"كوفي النخيل — افتح المتصفح على {url} (أو انتظر فتحه تلقائياً)")
+    print("كوفي النخيل — الاستماع على جميع الواجهات: http://0.0.0.0:8080 (من المتصفح: http://SERVER_IP:8080)")
     print("للإيقاف: Ctrl+C")
-    app.run(host=host, port=port, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=8080)
