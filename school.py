@@ -1,8 +1,3 @@
-import http.server
-import socketserver
-import webbrowser
-import threading
-
 HTML = r"""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -678,30 +673,3 @@ function showPage(id, el){
 </script>
 </body>
 </html>"""
-
-PORT = 8081
-
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type","text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(HTML.encode("utf-8"))
-    def log_message(self,*a): pass
-
-def open_browser():
-    import time; time.sleep(0.8)
-    webbrowser.open(f"http://localhost:{PORT}")
-
-print("="*50)
-print("  🏫 نظام إدارة المدارس — جاري التشغيل...")
-print(f"  🌐 http://localhost:{PORT}")
-print("  اضغط Ctrl+C للإيقاف")
-print("="*50)
-
-import threading
-threading.Thread(target=open_browser,daemon=True).start()
-
-with socketserver.TCPServer(("",PORT),Handler) as s:
-    try: s.serve_forever()
-    except KeyboardInterrupt: print("\n  ✅ تم الإيقاف.")

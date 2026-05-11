@@ -1,8 +1,3 @@
-import http.server
-import socketserver
-import threading
-import webbrowser
-
 HTML = """<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -695,33 +690,3 @@ HTML = """<!DOCTYPE html>
 </script>
 </body>
 </html>"""
-
-PORT = 8080
-
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(HTML.encode("utf-8"))
-    def log_message(self, format, *args):
-        pass  # تعطيل الطباعة في الكونسول
-
-def open_browser():
-    import time
-    time.sleep(0.8)
-    webbrowser.open(f"http://localhost:{PORT}")
-
-print("=" * 45)
-print("   🌴 كافيه النخيل — جاري التشغيل...")
-print(f"   🌐 http://localhost:{PORT}")
-print("   اضغط Ctrl+C للإيقاف")
-print("=" * 45)
-
-threading.Thread(target=open_browser, daemon=True).start()
-
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("\n   ✅ تم إيقاف السيرفر. إلى اللقاء! 🌴")
